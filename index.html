@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Our Weekly Meal Planner</title>
+<style>
+:root{--bg:#faf7f2;--card:#fff;--ink:#2b2a28;--mute:#7a756c;--line:#e8e2d8;--accent:#d9622b;--accent2:#2f7d5b;--soft:#fdeee5;--green:#e3f3ea;}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink);line-height:1.4}
+header{padding:18px 20px 0;max-width:1100px;margin:0 auto}
+h1{margin:0 0 12px;font-size:22px}
+nav{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:0}
+nav button{background:none;border:0;padding:10px 14px;font-size:15px;cursor:pointer;color:var(--mute);border-bottom:3px solid transparent;margin-bottom:-1px}
+nav button.on{color:var(--accent);border-color:var(--accent);font-weight:600}
+main{max-width:1100px;margin:0 auto;padding:18px 20px 60px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{margin:0 0 10px;font-size:18px} h3{margin:0 0 6px;font-size:15px}
+button.b,.b{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer}
+button.b.alt{background:#fff;color:var(--ink);border:1px solid var(--line)}
+button.b.sm{padding:4px 10px;font-size:12px}
+button.b.g{background:var(--accent2)}
+input,select,textarea{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;max-width:100%}
+textarea{width:100%;min-height:90px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.mute{color:var(--mute);font-size:13px}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--soft);border-radius:999px;padding:4px 10px;font-size:13px;margin:3px 4px 3px 0}
+.chip.g{background:var(--green)} .chip.x{background:#f1efea;color:var(--mute)}
+.chip button{background:none;border:0;cursor:pointer;color:var(--mute);padding:0;font-size:14px}
+table{border-collapse:collapse;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;font-size:14px;vertical-align:middle}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.rc{border:1px solid var(--line);border-radius:10px;padding:12px;background:#fff}
+.rc img{width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px}
+.pct{font-weight:700;color:var(--accent2)}
+.best{background:var(--green);font-weight:600}
+.total td{font-weight:700;border-top:2px solid var(--ink)}
+.plan td:first-child{font-weight:600;width:60px}
+.plan select{width:100%;min-width:130px}
+.scroll{overflow-x:auto}
+.done{text-decoration:line-through;color:var(--mute)}
+.price{width:70px}
+.bar{height:6px;border-radius:4px;background:var(--line);overflow:hidden;margin:6px 0}
+.bar i{display:block;height:100%;background:var(--accent2)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🍽️ Our Weekly Meal Planner</h1>
+  <nav id="nav"></nav>
+</header>
+<main id="main"></main>
+
+<script>
+const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const MEALS=["Breakfast","Lunch","Dinner"];
+const STAPLES=["salt","pepper","water","oil","olive oil","black pepper","sugar"];
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const norm=s=>s.toLowerCase().trim().replace(/\s+/g," ");
+
+const R=(name,meal,ings,steps)=>({id:uid(),name,meal,ings:ings.map(([n,q])=>({name:n,qty:q})),steps,src:"built-in"});
+const SEED=[
+R("Chicken Stir-Fry","Dinner",[["chicken breast","1 lb"],["broccoli","2 cups"],["bell pepper","1"],["soy sauce","3 tbsp"],["garlic","3 cloves"],["rice","1 cup"]],"Sear sliced chicken. Add veg and garlic, toss with soy sauce. Serve over rice."),
+R("Garlic Olive Oil Spaghetti","Dinner",[["spaghetti","8 oz"],["garlic","5 cloves"],["olive oil","1/3 cup"],["chili flakes","1 tsp"],["parmesan","1/4 cup"],["parsley","2 tbsp"]],"Boil pasta. Gently cook garlic in oil, toss with pasta, chili, parsley, parmesan."),
+R("Veggie Omelette","Breakfast",[["eggs","4"],["spinach","1 cup"],["bell pepper","1/2"],["cheese","1/2 cup"],["mushrooms","1/2 cup"]],"Sauté veg, pour in beaten eggs, add cheese, fold."),
+R("Black Bean Tacos","Dinner",[["black beans","1 can"],["tortillas","8"],["avocado","1"],["salsa","1/2 cup"],["cheese","1/2 cup"],["lime","1"],["cumin","1 tsp"]],"Warm beans with cumin. Fill tortillas, top with avocado, salsa, cheese, lime."),
+R("Sheet-Pan Chicken Sausage & Veggies","Dinner",[["chicken sausage","1 lb"],["potatoes","1 lb"],["bell pepper","2"],["zucchini","1"],["olive oil","2 tbsp"]],"Chop everything, toss with oil, roast at 425°F for 30 min."),
+R("Chicken Fried Rice","Dinner",[["rice","2 cups cooked"],["eggs","2"],["chicken breast","1/2 lb"],["frozen peas","1 cup"],["carrots","2"],["soy sauce","3 tbsp"],["garlic","2 cloves"]],"Scramble eggs, cook chicken, add veg and rice, season with soy sauce."),
+R("Tomato Basil Pasta","Dinner",[["pasta","8 oz"],["canned tomatoes","1 can"],["garlic","3 cloves"],["basil","1/4 cup"],["parmesan","1/4 cup"],["olive oil","2 tbsp"]],"Simmer garlic and tomatoes 15 min. Toss with pasta and basil."),
+R("Beef Chili","Dinner",[["ground beef","1 lb"],["kidney beans","1 can"],["canned tomatoes","1 can"],["bell pepper","1"],["chili powder","2 tbsp"],["garlic","3 cloves"]],"Brown beef with bell pepper, add the rest, simmer 30 min."),
+R("Salmon, Rice & Broccoli","Dinner",[["salmon","2 fillets"],["rice","1 cup"],["broccoli","2 cups"],["lemon","1"],["olive oil","1 tbsp"]],"Roast salmon and broccoli at 400°F for 12 min. Serve over rice with lemon."),
+R("Lentil Soup","Dinner",[["lentils","1 cup"],["carrots","2"],["celery","3 stalks"],["garlic","3 cloves"],["vegetable broth","4 cups"],["canned tomatoes","1 can"]],"Sauté veg, add lentils, broth and tomatoes, simmer 25 min."),
+R("Greek Salad Wraps","Lunch",[["tortillas","2"],["cucumber","1"],["tomatoes","2"],["feta","1/2 cup"],["olives","1/4 cup"],["chickpeas","1 can"]],"Chop veg, toss with chickpeas and feta, roll in tortillas."),
+R("Fluffy Pancakes","Breakfast",[["flour","1.5 cups"],["milk","1 1/4 cups"],["eggs","1"],["baking powder","1 tbsp"],["butter","3 tbsp"],["maple syrup","to serve"]],"Mix, ladle onto hot griddle, flip when bubbly."),
+R("Cheese Quesadillas","Lunch",[["tortillas","4"],["cheese","1.5 cups"],["black beans","1/2 can"],["salsa","1/2 cup"]],"Fill tortillas, griddle until crisp and melted."),
+R("Caprese Sandwich","Lunch",[["bread","4 slices"],["mozzarella","4 oz"],["tomatoes","2"],["basil","handful"],["olive oil","1 tbsp"]],"Layer on bread, drizzle with oil, toast if desired."),
+R("Peanut Noodles","Dinner",[["noodles","8 oz"],["peanut butter","1/4 cup"],["soy sauce","2 tbsp"],["lime","1"],["cucumber","1"],["carrots","1"],["garlic","1 clove"]],"Whisk sauce, toss with cooked noodles and raw veg."),
+R("Yogurt Parfait","Breakfast",[["greek yogurt","1 cup"],["granola","1/2 cup"],["berries","1 cup"],["honey","1 tbsp"]],"Layer in a glass."),
+];
+
+const DEFAULT_AVOID=["pork","onion","shallot","scallion","green onion"];
+const ALIASES={pork:["bacon","ham","prosciutto","pancetta","chorizo","lard","pepperoni","salami","pork"],onion:["onion","spring onion"]};
+let S=load();
+function load(){
+  let d=null;
+  try{const j=localStorage.getItem("mealplanner.v1");if(j)d=JSON.parse(j);}catch(e){}
+  if(!d)d={recipes:SEED,plan:{},pantry:[],checked:{},prices:{},stores:["Walmart","Aldi","Target","Kroger"],members:["Me","Partner"],tab:"plan"};
+  if(!d.avoid)d.avoid=DEFAULT_AVOID.slice();
+  return d;
+}
+function save(){try{localStorage.setItem("mealplanner.v1",JSON.stringify(S));}catch(e){}}
+const rec=id=>S.recipes.find(r=>r.id===id);
+const avoidTerms=()=>S.avoid.flatMap(a=>[norm(a),...(ALIASES[norm(a)]||[])]);
+const badIng=n=>{n=norm(n).replace(/onion powder|powdered onion|dried onion/g,"");return avoidTerms().some(t=>n.includes(t));};
+const blocked=r=>r.ings.some(i=>badIng(i.name));
+const okRecipes=()=>S.recipes.filter(r=>!blocked(r));
+
+/* ---------- matching ---------- */
+function haveIt(ing){
+  const n=norm(ing);
+  if(STAPLES.includes(n))return true;
+  return S.pantry.some(p=>{p=norm(p);return p===n||n.includes(p)||p.includes(n)});
+}
+function match(r){
+  const have=r.ings.filter(i=>haveIt(i.name)),miss=r.ings.filter(i=>!haveIt(i.name));
+  return{have,miss,pct:r.ings.length?Math.round(100*have.length/r.ings.length):0};
+}
+
+/* ---------- tabs ---------- */
+const TABS=[["plan","📅 Week plan"],["make","🥕 What can we make?"],["recipes","📖 Recipes"],["shop","🛒 Grocery & prices"],["settings","⚙️ Settings"]];
+function render(){
+  $("#nav").innerHTML=TABS.map(([k,l])=>`<button class="${S.tab===k?"on":""}" onclick="go('${k}')">${l}</button>`).join("");
+  ({plan:vPlan,make:vMake,recipes:vRecipes,shop:vShop,settings:vSettings})[S.tab]();
+  save();
+}
+function go(t){S.tab=t;render();}
+
+/* ---------- week plan ---------- */
+function vPlan(){
+  const rows=DAYS.map(d=>`<tr><td>${d}</td>${MEALS.map(m=>{
+    const cur=(S.plan[d]||{})[m]||"";
+    const all=okRecipes().sort((a,b)=>(b.meal===m)-(a.meal===m));
+    return`<td><select onchange="setMeal('${d}','${m}',this.value)"><option value="">—</option>${all.map(r=>`<option value="${r.id}" ${r.id===cur?"selected":""}>${esc(r.name)}</option>`).join("")}</select></td>`}).join("")}</tr>`).join("");
+  $("#main").innerHTML=`<div class="card"><div class="row" style="justify-content:space-between">
+    <div><h2>This week's plan</h2><div class="mute">Pick meals for each slot, then head to Grocery &amp; prices.</div></div>
+    <div class="row"><button class="b g" onclick="autoFill()">✨ Auto-fill dinners</button><button class="b alt" onclick="clearPlan()">New week</button></div></div>
+    <div class="scroll" style="margin-top:10px"><table class="plan"><tr><th></th>${MEALS.map(m=>`<th>${m}</th>`).join("")}</tr>${rows}</table></div></div>`;
+}
+function setMeal(d,m,v){(S.plan[d]=S.plan[d]||{})[m]=v;save();}
+function autoFill(){
+  const dinners=okRecipes().filter(r=>r.meal==="Dinner").sort((a,b)=>match(b).pct-match(a).pct||Math.random()-.5);
+  let i=0;DAYS.forEach(d=>{S.plan[d]=S.plan[d]||{};if(!S.plan[d].Dinner&&dinners.length){S.plan[d].Dinner=dinners[i%dinners.length].id;i++;}});
+  render();
+}
+function clearPlan(){if(confirm("Clear the plan and grocery checkmarks for a new week? (Pantry and prices stay.)")){S.plan={};S.checked={};render();}}
+
+/* ---------- what can we make ---------- */
+function vMake(){
+  const chips=S.pantry.map((p,i)=>`<span class="chip">${esc(p)}<button onclick="rmPantry(${i})">✕</button></span>`).join("")||`<span class="mute">Nothing yet — add what's in your fridge and cupboards.</span>`;
+  const ranked=okRecipes().map(r=>({r,m:match(r)})).sort((a,b)=>b.m.pct-a.m.pct);
+  const cards=ranked.map(({r,m})=>`<div class="rc"><div class="row" style="justify-content:space-between"><strong>${esc(r.name)}</strong><span class="pct">${m.pct}%</span></div>
+    <div class="bar"><i style="width:${m.pct}%"></i></div>
+    <div class="mute">${esc(r.meal)}</div>
+    <div>${m.have.map(i=>`<span class="chip g">${esc(i.name)}</span>`).join("")}${m.miss.map(i=>`<span class="chip x">need ${esc(i.name)}</span>`).join("")}</div>
+    <div class="row" style="margin-top:8px"><button class="b sm" onclick="addToPlan('${r.id}')">+ Add to plan</button><button class="b sm alt" onclick="showRecipe('${r.id}')">View</button></div></div>`).join("");
+  $("#main").innerHTML=`<div class="card"><h2>What do we have?</h2>
+    <form class="row" onsubmit="addPantry(event)"><input id="pin" placeholder="e.g. chicken breast, rice, spinach (comma-separated)" style="flex:1;min-width:220px"><button class="b">Add</button></form>
+    <div style="margin-top:8px">${chips}</div>
+    ${S.pantry.length?`<div class="row" style="margin-top:8px"><button class="b g" onclick="webSearchIngs()">🌐 Find more ideas online with these</button><button class="b alt sm" onclick="S.pantry=[];render()">Clear all</button></div>`:""}
+    <div id="webres"></div></div>
+    <div class="card"><h2>Best matches from your recipes</h2><div class="grid">${cards}</div></div>`;
+}
+function addPantry(e){e.preventDefault();const v=$("#pin").value.split(",").map(s=>norm(s)).filter(s=>s&&!badIng(s));v.forEach(x=>{if(!S.pantry.includes(x))S.pantry.push(x)});render();}
+function rmPantry(i){S.pantry.splice(i,1);render();}
+function addToPlan(id){
+  const r=rec(id);const m=r.meal==="Dessert"?"Dinner":r.meal;
+  for(const d of DAYS){S.plan[d]=S.plan[d]||{};if(!S.plan[d][m]){S.plan[d][m]=id;save();alert(`Added "${r.name}" to ${d} ${m}.`);return;}}
+  alert("No empty "+m+" slots left this week.");
+}
+function showRecipe(id){
+  const r=rec(id);
+  alert(r.name+"\n\n"+r.ings.map(i=>`• ${i.qty} ${i.name}`).join("\n")+"\n\n"+(r.steps||""));
+}
+
+/* ---------- web search (TheMealDB, free & keyless) ---------- */
+const API="https://www.themealdb.com/api/json/v1/1/";
+async function jget(u){const r=await fetch(API+u);if(!r.ok)throw new Error(r.status);return r.json();}
+async function webSearchIngs(){
+  const box=$("#webres");box.innerHTML=`<p class="mute">Searching the web…</p>`;
+  try{
+    const ings=S.pantry.slice(0,6);const tally={};
+    for(const i of ings){
+      const j=await jget("filter.php?i="+encodeURIComponent(i.replace(/ /g,"_")));
+      (j.meals||[]).forEach(m=>{const t=tally[m.idMeal]=tally[m.idMeal]||{...m,n:0};t.n++;});
+    }
+    const list=Object.values(tally).sort((a,b)=>b.n-a.n).slice(0,12);
+    box.innerHTML=list.length?`<h3 style="margin-top:14px">Ideas from TheMealDB</h3><div class="grid">${list.map(webCard).join("")}</div>`:`<p class="mute">No online matches. Try more common ingredient names (e.g. "chicken", "beef", "rice").</p>`;
+  }catch(e){box.innerHTML=`<p class="mute">Couldn't reach the recipe site (${esc(e.message)}). Check your connection and try again.</p>`;}
+}
+const webCard=m=>`<div class="rc"><img src="${esc(m.strMealThumb)}/preview" alt=""><strong>${esc(m.strMeal)}</strong>${m.n?`<div class="mute">uses ${m.n} of your ingredients</div>`:""}<div class="row" style="margin-top:8px"><button class="b sm" onclick="saveWeb('${m.idMeal}',this)">+ Save to recipes</button></div></div>`;
+async function saveWeb(id,btn){
+  btn.textContent="Saving…";
+  try{
+    const m=(await jget("lookup.php?i="+id)).meals[0];const ings=[];
+    for(let i=1;i<=20;i++){const n=(m["strIngredient"+i]||"").trim();if(n)ings.push({name:norm(n),qty:(m["strMeasure"+i]||"").trim()});}
+    const bad=ings.find(i=>badIng(i.name));
+    if(bad){btn.textContent="Skipped — contains "+bad.name;btn.disabled=true;return;}
+    S.recipes.push({id:uid(),name:m.strMeal,meal:"Dinner",ings,steps:(m.strInstructions||"").slice(0,600)+"…",src:"web",url:m.strSource||m.strYoutube||""});
+    save();btn.textContent="Saved ✓";btn.disabled=true;
+  }catch(e){btn.textContent="Failed — retry";}
+}
+
+/* ---------- recipes ---------- */
+function vRecipes(){
+  const list=S.recipes.map(r=>`<tr><td><strong>${esc(r.name)}</strong>${blocked(r)?` <span class="chip x">hidden: has an avoided food</span>`:""}<div class="mute">${esc(r.ings.map(i=>i.name).join(", "))}</div></td><td>${esc(r.meal)}</td><td>${r.src==="web"?"🌐":""}</td>
+    <td style="text-align:right"><button class="b sm alt" onclick="showRecipe('${r.id}')">View</button> <button class="b sm alt" onclick="delRecipe('${r.id}')">Delete</button></td></tr>`).join("");
+  $("#main").innerHTML=`<div class="card"><h2>Search the web for recipe ideas</h2>
+    <form class="row" onsubmit="webSearchName(event)"><input id="wq" placeholder="e.g. chicken curry, tacos, lasagne" style="flex:1;min-width:220px"><button class="b g">🌐 Search</button></form>
+    <div id="webres2"></div></div>
+    <div class="card"><h2>Add your own recipe</h2>
+    <form onsubmit="addRecipe(event)"><div class="row"><input id="rn" placeholder="Recipe name" required style="flex:1;min-width:200px"><select id="rm"><option>Dinner</option><option>Lunch</option><option>Breakfast</option></select></div>
+    <p class="mute" style="margin:8px 0 4px">Ingredients, one per line as <code>quantity, name</code> (e.g. <code>2 cups, rice</code> or just <code>garlic</code>)</p>
+    <textarea id="ri" required></textarea><div style="margin-top:8px"><button class="b">Save recipe</button></div></form></div>
+    <div class="card"><h2>Our recipes (${S.recipes.length})</h2><div class="scroll"><table>${list}</table></div></div>`;
+}
+async function webSearchName(e){
+  e.preventDefault();const q=$("#wq").value.trim();if(!q)return;const box=$("#webres2");box.innerHTML=`<p class="mute">Searching…</p>`;
+  try{const j=await jget("search.php?s="+encodeURIComponent(q));const l=(j.meals||[]).slice(0,12).map(m=>({...m,n:0}));
+    box.innerHTML=l.length?`<div class="grid" style="margin-top:12px">${l.map(webCard).join("")}</div>`:`<p class="mute">No results for "${esc(q)}".</p>`;
+  }catch(err){box.innerHTML=`<p class="mute">Couldn't reach the recipe site (${esc(err.message)}).</p>`;}
+}
+function addRecipe(e){
+  e.preventDefault();
+  const ings=$("#ri").value.split("\n").map(l=>l.trim()).filter(Boolean).map(l=>{const p=l.split(",");return p.length>1?{qty:p[0].trim(),name:norm(p.slice(1).join(","))}:{qty:"",name:norm(l)};});
+  const bad=ings.find(i=>badIng(i.name));
+  if(bad&&!confirm(`"${bad.name}" is on your avoid list. Save anyway? (It will be hidden from planning.)`))return;
+  S.recipes.push({id:uid(),name:$("#rn").value.trim(),meal:$("#rm").value,ings,steps:"",src:"custom"});render();
+}
+function delRecipe(id){if(confirm("Delete this recipe?")){S.recipes=S.recipes.filter(r=>r.id!==id);for(const d in S.plan)for(const m in S.plan[d])if(S.plan[d][m]===id)delete S.plan[d][m];render();}}
+
+/* ---------- grocery & prices ---------- */
+function shopItems(){
+  const map={};
+  DAYS.forEach(d=>MEALS.forEach(m=>{const r=rec((S.plan[d]||{})[m]);if(!r)return;
+    r.ings.forEach(i=>{const k=norm(i.name);if(haveIt(k))return;(map[k]=map[k]||{name:k,qtys:[],meals:new Set()});if(i.qty)map[k].qtys.push(i.qty);map[k].meals.add(r.name);});}));
+  return Object.values(map).sort((a,b)=>a.name.localeCompare(b.name));
+}
+function vShop(){
+  const items=shopItems();
+  if(!items.length){$("#main").innerHTML=`<div class="card"><h2>Grocery list</h2><p class="mute">Nothing to buy yet — plan some meals first (or you already have everything!).</p></div>`;return;}
+  const tot={};S.stores.forEach(s=>tot[s]=0);let split=0,missing={};S.stores.forEach(s=>missing[s]=0);
+  const rows=items.map(it=>{
+    const p=S.prices[it.name]||{};const vals=S.stores.map(s=>parseFloat(p[s])).filter(v=>!isNaN(v));const min=vals.length?Math.min(...vals):null;
+    if(min!==null)split+=min;
+    S.stores.forEach(s=>{const v=parseFloat(p[s]);if(!isNaN(v))tot[s]+=v;else missing[s]++;});
+    const ck=S.checked[it.name];
+    return`<tr><td><input type="checkbox" ${ck?"checked":""} onchange="S.checked['${esc(it.name)}']=this.checked;render()"></td>
+      <td class="${ck?"done":""}">${esc(it.name)}<div class="mute">${esc([...new Set(it.qtys)].join(" + "))}</div></td>
+      ${S.stores.map(s=>{const v=parseFloat(p[s]);return`<td class="${min!==null&&v===min?"best":""}"><input class="price" type="number" step="0.01" min="0" placeholder="$" value="${isNaN(v)?"":v}" onchange="setPrice('${esc(it.name)}','${esc(s)}',this.value)"></td>`}).join("")}</tr>`}).join("");
+  const cheapest=S.stores.filter(s=>missing[s]===0&&tot[s]>0).sort((a,b)=>tot[a]-tot[b])[0];
+  const allPriced=items.every(it=>S.stores.some(s=>!isNaN(parseFloat((S.prices[it.name]||{})[s]))));
+  $("#main").innerHTML=`<div class="card"><h2>Grocery list &amp; price comparison</h2>
+    <p class="mute">Enter the price you see at each store for the amount needed. Prices are remembered for next week. Cheapest per item is highlighted.</p>
+    <div class="scroll"><table><tr><th></th><th>Item</th>${S.stores.map(s=>`<th>${esc(s)}</th>`).join("")}</tr>${rows}
+    <tr class="total"><td></td><td>Total (priced items)</td>${S.stores.map(s=>`<td>$${tot[s].toFixed(2)}${missing[s]?`<div class="mute" style="font-weight:400">${missing[s]} unpriced</div>`:""}</td>`).join("")}</tr></table></div></div>
+    <div class="card"><h2>Where should we shop?</h2>
+    ${cheapest?`<p><strong>${esc(cheapest)}</strong> is the cheapest single store: <strong>$${tot[cheapest].toFixed(2)}</strong>.</p>`:`<p class="mute">Price every item at a store to see the best single-store total.</p>`}
+    ${split>0?`<p>Splitting by cheapest-per-item would cost <strong>$${split.toFixed(2)}</strong>${cheapest&&tot[cheapest]>split?` — saving <strong>$${(tot[cheapest]-split).toFixed(2)}</strong> vs. ${esc(cheapest)}`:""}${allPriced?"":" (some items not yet priced)"}.</p>`:""}
+    <div class="row"><button class="b alt" onclick="copyList()">📋 Copy list to share</button></div></div>`;
+}
+function setPrice(n,s,v){(S.prices[n]=S.prices[n]||{})[s]=v;render();}
+function copyList(){
+  const t=shopItems().map(i=>`☐ ${i.name}${i.qtys.length?" ("+[...new Set(i.qtys)].join(" + ")+")":""}`).join("\n");
+  navigator.clipboard?.writeText(t).then(()=>alert("Grocery list copied — paste it into a text to your partner!"),()=>prompt("Copy:",t));
+}
+
+/* ---------- settings ---------- */
+function vSettings(){
+  $("#main").innerHTML=`<div class="card"><h2>Foods we avoid</h2>
+    <p class="mute">Recipes containing these (or related items like bacon/ham for pork) are hidden from planning and web saves.</p>
+    <div>${S.avoid.map((s,i)=>`<span class="chip">${esc(s)}<button onclick="S.avoid.splice(${i},1);render()">✕</button></span>`).join("")}</div>
+    <form class="row" onsubmit="event.preventDefault();const v=norm($('#an').value);if(v&&!S.avoid.includes(v))S.avoid.push(v);render()" style="margin-top:8px"><input id="an" placeholder="Add a food to avoid"><button class="b">Add</button></form></div>
+    <div class="card"><h2>Stores to compare</h2>
+    <div>${S.stores.map((s,i)=>`<span class="chip">${esc(s)}<button onclick="rmStore(${i})">✕</button></span>`).join("")}</div>
+    <form class="row" onsubmit="addStore(event)" style="margin-top:8px"><input id="sn" placeholder="Add a store (e.g. Costco, Trader Joe's)"><button class="b">Add</button></form></div>
+    <div class="card"><h2>Share with your partner</h2>
+    <p class="mute">Data is saved in this browser. To sync with your partner's device, copy the code below and paste it into their copy under "Import" (whoever edited last wins).</p>
+    <textarea id="exp" readonly>${esc(btoa(unescape(encodeURIComponent(JSON.stringify(S)))))}</textarea>
+    <div class="row" style="margin:8px 0"><button class="b alt" onclick="$('#exp').select();document.execCommand('copy')">Copy code</button></div>
+    <p class="mute">Import a code:</p><textarea id="imp"></textarea><div style="margin-top:8px"><button class="b" onclick="doImport()">Import</button></div></div>
+    <div class="card"><button class="b alt" onclick="if(confirm('Reset everything to defaults?')){localStorage.removeItem('mealplanner.v1');S=load();render();}">Reset all data</button></div>`;
+}
+function addStore(e){e.preventDefault();const v=$("#sn").value.trim();if(v&&!S.stores.includes(v))S.stores.push(v);render();}
+function rmStore(i){S.stores.splice(i,1);render();}
+function doImport(){try{const d=JSON.parse(decodeURIComponent(escape(atob($("#imp").value.trim()))));if(!d.recipes)throw 0;S=d;S.tab="plan";render();}catch(e){alert("That code didn't look right.");}}
+
+render();
+</script>
+</body>
+</html>
