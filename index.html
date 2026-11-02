@@ -169,31 +169,45 @@ function showRecipe(id){
 const API="https://www.themealdb.com/api/json/v1/1/";
 async function jget(u){const r=await fetch(API+u);if(!r.ok)throw new Error(r.status);return r.json();}
 const mealIngs=m=>{const o=[];for(let i=1;i<=20;i++){const n=(m["strIngredient"+i]||"").trim();if(n)o.push({name:norm(n),qty:(m["strMeasure"+i]||"").trim()});}return o;};
+const SMALL=/parsley|cilantro|coriander|thyme|basil|oregano|rosemary|sage|dill|mint|paprika|cumin|turmeric|cinnamon|chilli|chili|cayenne|nutmeg|ginger|garlic|butter|vinegar|soy sauce|mustard|honey|stock|broth|flour|cornflour|cornstarch|sugar|lemon juice|lime juice|bay leaf|seasoning|spice|powder|sauce|paste|puree|flakes|yeast|baking|ketchup|mayo|worcestershire|sesame|extract|zest|cream|milk/;
+const CATS={chicken:"Chicken",beef:"Beef",lamb:"Lamb",salmon:"Seafood",fish:"Seafood",shrimp:"Seafood",prawn:"Seafood",cod:"Seafood",tuna:"Seafood",pasta:"Pasta",spaghetti:"Pasta",penne:"Pasta",tofu:"Vegetarian",lentil:"Vegetarian",chickpea:"Vegetarian"};
+function variants(p){
+  const v=new Set([p]),w=p.split(" "),last=w[w.length-1];v.add(last);
+  [p,last].forEach(x=>{if(x.endsWith("oes"))v.add(x.slice(0,-2));else if(x.endsWith("s"))v.add(x.slice(0,-1));else v.add(x+"s");});
+  return[...v].filter(x=>x.length>2);
+}
 async function webSearchIngs(){
   const box=$("#webres");box.innerHTML=`<p class="mute">Searching the web…</p>`;
   try{
-    const tally={};
-    for(const i of S.pantry.slice(0,10)){
-      const j=await jget("filter.php?i="+encodeURIComponent(i.replace(/ /g,"_")));
-      (j.meals||[]).forEach(m=>{const t=tally[m.idMeal]=tally[m.idMeal]||{...m,n:0};t.n++;});
-    }
-    const cands=Object.values(tally).sort((a,b)=>b.n-a.n).slice(0,40);
+    const pantry=S.pantry.slice(0,10),tally={};
+    const jobs=[];
+    pantry.forEach((p,idx)=>variants(p).forEach(v=>jobs.push(jget("filter.php?i="+encodeURIComponent(v.replace(/ /g,"_"))).then(j=>(j.meals||[]).forEach(m=>{const t=tally[m.idMeal]=tally[m.idMeal]||{idMeal:m.idMeal,set:new Set()};t.set.add(idx);})).catch(()=>{}))));
+    const cats=new Set();pantry.forEach(p=>Object.keys(CATS).forEach(k=>{if(p.includes(k))cats.add(CATS[k]);}));
+    cats.forEach(c=>jobs.push(jget("filter.php?c="+c).then(j=>(j.meals||[]).forEach(m=>{tally[m.idMeal]=tally[m.idMeal]||{idMeal:m.idMeal,set:new Set()};})).catch(()=>{})));
+    await Promise.all(jobs);
+    const cands=Object.values(tally).sort((a,b)=>b.set.size-a.set.size).slice(0,80);
     const full=(await Promise.all(cands.map(c=>jget("lookup.php?i="+c.idMeal).then(j=>j.meals&&j.meals[0]).catch(()=>null)))).filter(Boolean);
-    const scored=full.map(m=>{const ings=mealIngs(m);const have=ings.filter(i=>haveIt(i.name)),miss=ings.filter(i=>!haveIt(i.name));
+    const scored=full.map(m=>{const ings=mealIngs(m);const have=ings.filter(i=>haveIt(i.name)),need=ings.filter(i=>!haveIt(i.name));
+      const small=need.filter(i=>SMALL.test(i.name)),big=need.filter(i=>!SMALL.test(i.name));
       const core=have.filter(i=>!STAPLES.includes(norm(i.name))).length;
-      return{m,ings,have,miss,core,pct:ings.length?Math.round(100*have.length/ings.length):0,bad:ings.some(i=>badIng(i.name))};})
+      return{m,ings,have,small,miss:big,core,bad:ings.some(i=>badIng(i.name))};})
       .filter(x=>!x.bad&&x.core>=Math.min(2,S.pantry.length))
-      .sort((a,b)=>a.miss.length-b.miss.length||b.core-a.core);
-    const near=scored.filter(x=>x.miss.length<=2).slice(0,12),more=scored.filter(x=>x.miss.length>=3&&x.miss.length<=5).slice(0,6);
+      .sort((a,b)=>a.miss.length-b.miss.length||a.small.length-b.small.length||b.core-a.core);
+    const near=scored.filter(x=>x.miss.length<=2).slice(0,15),more=scored.filter(x=>x.miss.length>=3&&x.miss.length<=5).slice(0,6);
     const sec=(t,l)=>l.length?`<h3 style="margin-top:14px">${t}</h3><div class="grid">${l.map(webMatchCard).join("")}</div>`:"";
-    box.innerHTML=(near.length||more.length)?
-      sec("Just 1–2 ingredients away (or ready now)",near)+sec("A few more to pick up",more)
-      :`<p class="mute">No online recipes were within a few ingredients of what you have (and free of foods you avoid). Try adding a few more items.</p>`;
+    const q=encodeURIComponent(pantry.slice(0,5).join(" "));
+    const wide=`<div class="row" style="margin-top:14px"><span class="mute">Search the wider web:</span>
+      <a class="b alt sm" style="text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/search?q=${encodeURIComponent("recipe using "+pantry.slice(0,5).join(", "))}">Google</a>
+      <a class="b alt sm" style="text-decoration:none" target="_blank" rel="noopener" href="https://www.allrecipes.com/search?q=${q}">AllRecipes</a>
+      <a class="b alt sm" style="text-decoration:none" target="_blank" rel="noopener" href="https://www.budgetbytes.com/?s=${q}">Budget Bytes</a></div>
+      <p class="mute">Found a good one online? Add it under Recipes → "Add your own recipe".</p>`;
+    box.innerHTML=((near.length||more.length)?sec("Just 1–2 ingredients away (or ready now)",near)+sec("A few more to pick up",more)
+      :`<p class="mute">No recipes in the recipe database were within a few ingredients of what you have (and free of foods you avoid).</p>`)+wide;
   }catch(e){box.innerHTML=`<p class="mute">Couldn't reach the recipe site (${esc(e.message)}). Check your connection and try again.</p>`;}
 }
-const webMatchCard=x=>`<div class="rc"><img src="${esc(x.m.strMealThumb)}/preview" alt=""><div class="row" style="justify-content:space-between"><strong>${esc(x.m.strMeal)}</strong><span class="pct">${x.miss.length?"missing "+x.miss.length:"✓ ready"}</span></div>
-<div class="bar"><i style="width:${x.pct}%"></i></div>
-<div>${x.have.map(i=>`<span class="chip g">${esc(i.name)}</span>`).join("")}${x.miss.map(i=>`<span class="chip x">need ${esc(i.name)}</span>`).join("")}</div>
+const webMatchCard=x=>`<div class="rc"><img src="${esc(x.m.strMealThumb)}/preview" alt=""><div class="row" style="justify-content:space-between"><strong>${esc(x.m.strMeal)}</strong></div>
+<div class="pct" style="margin:4px 0">${x.miss.length?"Missing "+x.miss.length:"✓ Ready to make"}${x.small.length?` <span class="mute" style="font-weight:400">+ ${x.small.length} small add${x.small.length>1?"s":""}</span>`:""}</div>
+<div>${x.have.map(i=>`<span class="chip g">${esc(i.name)}</span>`).join("")}${x.miss.map(i=>`<span class="chip x">need ${esc(i.name)}</span>`).join("")}${x.small.map(i=>`<span class="chip x" style="opacity:.7">small add: ${esc(i.name)}</span>`).join("")}</div>
 <div class="row" style="margin-top:8px"><button class="b sm" onclick="saveWeb('${x.m.idMeal}',this)">+ Save to recipes</button></div></div>`;
 const webCard=m=>`<div class="rc"><img src="${esc(m.strMealThumb)}/preview" alt=""><strong>${esc(m.strMeal)}</strong>${m.n?`<div class="mute">uses ${m.n} of your ingredients</div>`:""}<div class="row" style="margin-top:8px"><button class="b sm" onclick="saveWeb('${m.idMeal}',this)">+ Save to recipes</button></div></div>`;
 async function saveWeb(id,btn){
