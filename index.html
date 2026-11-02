@@ -177,16 +177,21 @@ async function webSearchIngs(){
       const j=await jget("filter.php?i="+encodeURIComponent(i.replace(/ /g,"_")));
       (j.meals||[]).forEach(m=>{const t=tally[m.idMeal]=tally[m.idMeal]||{...m,n:0};t.n++;});
     }
-    const cands=Object.values(tally).sort((a,b)=>b.n-a.n).slice(0,24);
+    const cands=Object.values(tally).sort((a,b)=>b.n-a.n).slice(0,40);
     const full=(await Promise.all(cands.map(c=>jget("lookup.php?i="+c.idMeal).then(j=>j.meals&&j.meals[0]).catch(()=>null)))).filter(Boolean);
     const scored=full.map(m=>{const ings=mealIngs(m);const have=ings.filter(i=>haveIt(i.name)),miss=ings.filter(i=>!haveIt(i.name));
-      return{m,ings,have,miss,pct:ings.length?Math.round(100*have.length/ings.length):0,bad:ings.some(i=>badIng(i.name))};})
-      .filter(x=>!x.bad&&x.pct>=40).sort((a,b)=>b.pct-a.pct).slice(0,12);
-    box.innerHTML=scored.length?`<h3 style="margin-top:14px">Online ideas that mostly use what you have</h3><div class="grid">${scored.map(webMatchCard).join("")}</div>`
-      :`<p class="mute">No online recipes were at least 40% covered by your ingredients (and free of foods you avoid). Try adding more items, such as a protein, a carb and a vegetable.</p>`;
+      const core=have.filter(i=>!STAPLES.includes(norm(i.name))).length;
+      return{m,ings,have,miss,core,pct:ings.length?Math.round(100*have.length/ings.length):0,bad:ings.some(i=>badIng(i.name))};})
+      .filter(x=>!x.bad&&x.core>=Math.min(2,S.pantry.length))
+      .sort((a,b)=>a.miss.length-b.miss.length||b.core-a.core);
+    const near=scored.filter(x=>x.miss.length<=2).slice(0,12),more=scored.filter(x=>x.miss.length>=3&&x.miss.length<=5).slice(0,6);
+    const sec=(t,l)=>l.length?`<h3 style="margin-top:14px">${t}</h3><div class="grid">${l.map(webMatchCard).join("")}</div>`:"";
+    box.innerHTML=(near.length||more.length)?
+      sec("Just 1–2 ingredients away (or ready now)",near)+sec("A few more to pick up",more)
+      :`<p class="mute">No online recipes were within a few ingredients of what you have (and free of foods you avoid). Try adding a few more items.</p>`;
   }catch(e){box.innerHTML=`<p class="mute">Couldn't reach the recipe site (${esc(e.message)}). Check your connection and try again.</p>`;}
 }
-const webMatchCard=x=>`<div class="rc"><img src="${esc(x.m.strMealThumb)}/preview" alt=""><div class="row" style="justify-content:space-between"><strong>${esc(x.m.strMeal)}</strong><span class="pct">${x.pct}%</span></div>
+const webMatchCard=x=>`<div class="rc"><img src="${esc(x.m.strMealThumb)}/preview" alt=""><div class="row" style="justify-content:space-between"><strong>${esc(x.m.strMeal)}</strong><span class="pct">${x.miss.length?"missing "+x.miss.length:"✓ ready"}</span></div>
 <div class="bar"><i style="width:${x.pct}%"></i></div>
 <div>${x.have.map(i=>`<span class="chip g">${esc(i.name)}</span>`).join("")}${x.miss.map(i=>`<span class="chip x">need ${esc(i.name)}</span>`).join("")}</div>
 <div class="row" style="margin-top:8px"><button class="b sm" onclick="saveWeb('${x.m.idMeal}',this)">+ Save to recipes</button></div></div>`;
