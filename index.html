@@ -168,24 +168,33 @@ function showRecipe(id){
 /* ---------- web search (TheMealDB, free & keyless) ---------- */
 const API="https://www.themealdb.com/api/json/v1/1/";
 async function jget(u){const r=await fetch(API+u);if(!r.ok)throw new Error(r.status);return r.json();}
+const mealIngs=m=>{const o=[];for(let i=1;i<=20;i++){const n=(m["strIngredient"+i]||"").trim();if(n)o.push({name:norm(n),qty:(m["strMeasure"+i]||"").trim()});}return o;};
 async function webSearchIngs(){
   const box=$("#webres");box.innerHTML=`<p class="mute">Searching the web…</p>`;
   try{
-    const ings=S.pantry.slice(0,6);const tally={};
-    for(const i of ings){
+    const tally={};
+    for(const i of S.pantry.slice(0,10)){
       const j=await jget("filter.php?i="+encodeURIComponent(i.replace(/ /g,"_")));
       (j.meals||[]).forEach(m=>{const t=tally[m.idMeal]=tally[m.idMeal]||{...m,n:0};t.n++;});
     }
-    const list=Object.values(tally).sort((a,b)=>b.n-a.n).slice(0,12);
-    box.innerHTML=list.length?`<h3 style="margin-top:14px">Ideas from TheMealDB</h3><div class="grid">${list.map(webCard).join("")}</div>`:`<p class="mute">No online matches. Try more common ingredient names (e.g. "chicken", "beef", "rice").</p>`;
+    const cands=Object.values(tally).sort((a,b)=>b.n-a.n).slice(0,24);
+    const full=(await Promise.all(cands.map(c=>jget("lookup.php?i="+c.idMeal).then(j=>j.meals&&j.meals[0]).catch(()=>null)))).filter(Boolean);
+    const scored=full.map(m=>{const ings=mealIngs(m);const have=ings.filter(i=>haveIt(i.name)),miss=ings.filter(i=>!haveIt(i.name));
+      return{m,ings,have,miss,pct:ings.length?Math.round(100*have.length/ings.length):0,bad:ings.some(i=>badIng(i.name))};})
+      .filter(x=>!x.bad&&x.pct>=40).sort((a,b)=>b.pct-a.pct).slice(0,12);
+    box.innerHTML=scored.length?`<h3 style="margin-top:14px">Online ideas that mostly use what you have</h3><div class="grid">${scored.map(webMatchCard).join("")}</div>`
+      :`<p class="mute">No online recipes were at least 40% covered by your ingredients (and free of foods you avoid). Try adding more items, such as a protein, a carb and a vegetable.</p>`;
   }catch(e){box.innerHTML=`<p class="mute">Couldn't reach the recipe site (${esc(e.message)}). Check your connection and try again.</p>`;}
 }
+const webMatchCard=x=>`<div class="rc"><img src="${esc(x.m.strMealThumb)}/preview" alt=""><div class="row" style="justify-content:space-between"><strong>${esc(x.m.strMeal)}</strong><span class="pct">${x.pct}%</span></div>
+<div class="bar"><i style="width:${x.pct}%"></i></div>
+<div>${x.have.map(i=>`<span class="chip g">${esc(i.name)}</span>`).join("")}${x.miss.map(i=>`<span class="chip x">need ${esc(i.name)}</span>`).join("")}</div>
+<div class="row" style="margin-top:8px"><button class="b sm" onclick="saveWeb('${x.m.idMeal}',this)">+ Save to recipes</button></div></div>`;
 const webCard=m=>`<div class="rc"><img src="${esc(m.strMealThumb)}/preview" alt=""><strong>${esc(m.strMeal)}</strong>${m.n?`<div class="mute">uses ${m.n} of your ingredients</div>`:""}<div class="row" style="margin-top:8px"><button class="b sm" onclick="saveWeb('${m.idMeal}',this)">+ Save to recipes</button></div></div>`;
 async function saveWeb(id,btn){
   btn.textContent="Saving…";
   try{
-    const m=(await jget("lookup.php?i="+id)).meals[0];const ings=[];
-    for(let i=1;i<=20;i++){const n=(m["strIngredient"+i]||"").trim();if(n)ings.push({name:norm(n),qty:(m["strMeasure"+i]||"").trim()});}
+    const m=(await jget("lookup.php?i="+id)).meals[0];const ings=mealIngs(m);
     const bad=ings.find(i=>badIng(i.name));
     if(bad){btn.textContent="Skipped — contains "+bad.name;btn.disabled=true;return;}
     S.recipes.push({id:uid(),name:m.strMeal,meal:"Dinner",ings,steps:(m.strInstructions||"").slice(0,600)+"…",src:"web",url:m.strSource||m.strYoutube||""});
@@ -239,17 +248,33 @@ function vShop(){
     const ck=S.checked[it.name];
     return`<tr><td><input type="checkbox" ${ck?"checked":""} onchange="S.checked['${esc(it.name)}']=this.checked;render()"></td>
       <td class="${ck?"done":""}">${esc(it.name)}<div class="mute">${esc([...new Set(it.qtys)].join(" + "))}</div></td>
-      ${S.stores.map(s=>{const v=parseFloat(p[s]);return`<td class="${min!==null&&v===min?"best":""}"><input class="price" type="number" step="0.01" min="0" placeholder="$" value="${isNaN(v)?"":v}" onchange="setPrice('${esc(it.name)}','${esc(s)}',this.value)"></td>`}).join("")}</tr>`}).join("");
+      ${S.stores.map(s=>{const v=parseFloat(p[s]);return`<td class="${min!==null&&v===min?"best":""}"><input class="price" type="number" step="0.01" min="0" placeholder="$" value="${isNaN(v)?"":v}" onchange="setPrice('${esc(it.name)}','${esc(s)}',this.value)"> <a href="${esc(storeUrl(s,it.name))}" target="_blank" rel="noopener" title="Look up ${esc(it.name)} at ${esc(s)}" style="text-decoration:none">🔍</a></td>`}).join("")}</tr>`}).join("");
+  const planned=[];DAYS.forEach(d=>MEALS.forEach(m=>{const r=rec((S.plan[d]||{})[m]);if(r)planned.push({d,m,r});}));
+  const mealRows=planned.map(({d,m,r})=>{
+    const need=r.ings.filter(i=>!haveIt(i.name));let sum=0,n=0;
+    need.forEach(i=>{const p=S.prices[norm(i.name)]||{};const v=S.stores.map(s=>parseFloat(p[s])).filter(x=>!isNaN(x));if(v.length){sum+=Math.min(...v);n++;}});
+    return`<tr><td>${d} ${m}</td><td>${esc(r.name)}</td><td>${n?"$"+sum.toFixed(2):"—"}</td><td class="mute">${n} of ${need.length} priced</td></tr>`;}).join("");
+  const mealCard=planned.length?`<div class="card"><h2>Cost per meal</h2><p class="mute">Uses the cheapest price you've entered for each ingredient you need to buy (shared ingredients are counted in full for every meal).</p><div class="scroll"><table>${mealRows}</table></div></div>`:"";
   const cheapest=S.stores.filter(s=>missing[s]===0&&tot[s]>0).sort((a,b)=>tot[a]-tot[b])[0];
   const allPriced=items.every(it=>S.stores.some(s=>!isNaN(parseFloat((S.prices[it.name]||{})[s]))));
   $("#main").innerHTML=`<div class="card"><h2>Grocery list &amp; price comparison</h2>
-    <p class="mute">Enter the price you see at each store for the amount needed. Prices are remembered for next week. Cheapest per item is highlighted.</p>
+    <p class="mute">Click 🔍 to open that store's search for the item, then type the price you see. Prices are remembered for next week. Cheapest per item is highlighted.</p>
     <div class="scroll"><table><tr><th></th><th>Item</th>${S.stores.map(s=>`<th>${esc(s)}</th>`).join("")}</tr>${rows}
     <tr class="total"><td></td><td>Total (priced items)</td>${S.stores.map(s=>`<td>$${tot[s].toFixed(2)}${missing[s]?`<div class="mute" style="font-weight:400">${missing[s]} unpriced</div>`:""}</td>`).join("")}</tr></table></div></div>
-    <div class="card"><h2>Where should we shop?</h2>
+    ${mealCard}<div class="card"><h2>Where should we shop?</h2>
     ${cheapest?`<p><strong>${esc(cheapest)}</strong> is the cheapest single store: <strong>$${tot[cheapest].toFixed(2)}</strong>.</p>`:`<p class="mute">Price every item at a store to see the best single-store total.</p>`}
     ${split>0?`<p>Splitting by cheapest-per-item would cost <strong>$${split.toFixed(2)}</strong>${cheapest&&tot[cheapest]>split?` — saving <strong>$${(tot[cheapest]-split).toFixed(2)}</strong> vs. ${esc(cheapest)}`:""}${allPriced?"":" (some items not yet priced)"}.</p>`:""}
     <div class="row"><button class="b alt" onclick="copyList()">📋 Copy list to share</button></div></div>`;
+}
+function storeUrl(store,item){
+  const q=encodeURIComponent(item),k=store.toLowerCase();
+  if(k.includes("walmart"))return"https://www.walmart.com/search?q="+q;
+  if(k.includes("target"))return"https://www.target.com/s?searchTerm="+q;
+  if(k.includes("kroger"))return"https://www.kroger.com/search?query="+q;
+  if(k.includes("aldi"))return"https://new.aldi.us/results?q="+q;
+  if(k.includes("costco"))return"https://www.costco.com/CatalogSearch?keyword="+q;
+  if(k.includes("safeway"))return"https://www.safeway.com/shop/search-results.html?q="+q;
+  return"https://www.google.com/search?q="+encodeURIComponent(item+" price "+store);
 }
 function setPrice(n,s,v){(S.prices[n]=S.prices[n]||{})[s]=v;render();}
 function copyList(){
